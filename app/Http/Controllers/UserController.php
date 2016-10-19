@@ -313,9 +313,69 @@ class UserController extends Controller
         $data['user'] = User::with('religion')->find($request->user()->user_id);
         $birthdate = Carbon::createFromFormat('Y-m-d', ($data['user']->user_birthdate==null) ? date('Y-m-d') : $data['user']->user_birthdate);
         $data['birthdate'] = $birthdate->format('d/m/Y');
+        $data['religion'] = Religion::where('active','1')->orderBy('religion_name')->get();
         $data['roles'] = Role::where('active','1')->get();
         $data['groups'] = Group::where('active','1')->get();
 
         return view('vendor.material.user.profile', $data);
+    }
+
+    public function postEditProfile(Request $request) {
+        $id = $request->user()->user_id;
+
+        $this->validate($request, [
+            'user_birthdate' => 'required|date_format:"d/m/Y"',
+            'religion_id' => 'required',
+            'user_email' => 'required|unique:users,user_email,'.$id.',user_id|max:100',
+            'user_phone' => 'digits_between:10, 14',
+        ]);
+
+        $obj = User::find($id);
+
+        $obj->user_birthdate = Carbon::createFromFormat('d/m/Y', $request->input('user_birthdate'))->toDateString();
+        $obj->religion_id = $request->input('religion_id');
+        $obj->user_email = $request->input('user_email');
+        $obj->user_phone = $request->input('user_phone');
+        $obj->updated_by = $request->user()->user_id;
+
+        if($obj->save())
+        {
+            return response()->json(100); //success
+        }else{
+            $data = validation_errors();
+            return response()->json($data); //failed
+        }
+    }
+
+    public function postUploadAvatar(Request $request) {
+        $id = $request->user()->user_id;
+
+        $this->validate($request, [
+            'upload_file' => 'required|image|max:2000',
+        ]);
+
+        $obj = User::find($id);
+
+        if ($request->hasFile('upload_file')) {
+            if ($request->file('upload_file')->isValid()) {
+                $uploaded = $request->file('upload_file');
+                $avatar = Carbon::now()->format('YmdHis') . $uploaded->getClientOriginalName();
+                $uploaded->move(
+                    base_path() . '/public/img/avatar/', $avatar
+                );
+
+                $obj->user_avatar = $avatar;
+
+            }
+        }
+
+        $obj->updated_by = $request->user()->user_id;
+
+        if($obj->save())
+        {
+            $request->session()->flash('status', 'Avatar has been changed!');
+
+            return redirect('profile');
+        }
     }
 }
